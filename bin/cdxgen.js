@@ -35,6 +35,7 @@ import {
 import { validateBom } from "../lib/helpers/validator.js";
 import { postProcess } from "../lib/stages/postgen/postgen.js";
 import { prepareEnv } from "../lib/stages/pregen/pregen.js";
+import { PackageURL } from "packageurl-js";
 
 // Support for config files
 const configPath = findUpSync([
@@ -394,7 +395,8 @@ if (process.env.GLOBAL_AGENT_HTTP_PROXY || process.env.HTTP_PROXY) {
   globalAgent.bootstrap();
 }
 
-const filePath = args._[0] || process.cwd();
+let filePath = args._[0] || process.cwd();
+
 if (!args.projectName) {
   if (filePath !== ".") {
     args.projectName = basename(filePath);
@@ -800,6 +802,60 @@ const checkPermissions = (filePath, options) => {
     return;
   }
   prepareEnv(filePath, options);
+
+  // Check if filePath is a PURL
+  if (typeof filePath === 'string' && filePath.startsWith('pkg:')) {
+    thoughtLog(`Detected Package URL (PURL): ${filePath}`);
+    options.inspectPurl = filePath;
+  }
+
+  if (options.inspectPurl) {
+    thoughtLog(`Inspecting PURL: ${options.inspectPurl}`);
+    try {
+      const purlBomGenerator = await import("../lib/helpers/purlbom.js");
+      
+      let purlObj;
+      try {
+        purlObj = PackageURL.fromString(options.inspectPurl);
+        thoughtLog(`Parsed PURL: type=${purlObj.type}, namespace=${purlObj.namespace}, name=${purlObj.name}, version=${purlObj.version}`);
+      } catch (ex) {
+        console.error(`Invalid PURL provided: ${options.inspectPurl}`);
+        console.error(`Error details: ${ex.message}`);
+        console.error("PURL format should be: 'pkg:<type>/<namespace>/<name>@<version>'");
+        console.error("Example: 'pkg:maven/org.apache.logging.log4j/log4j-core@2.14.1'");
+        process.exit(1);
+      }
+
+      if (!purlObj.type || !purlObj.namespace || !purlObj.name || !purlObj.version) {
+        console.error(`Incomplete PURL provided: ${options.inspectPurl}`);
+        console.error("PURL must include type, namespace, name, and version");
+        console.error("Example: 'pkg:maven/org.apache.logging.log4j/log4j-core@2.14.1'");
+        process.exit(1);
+      }
+
+      if (purlObj.type !== 'maven') {
+        console.error(`Unsupported PURL type: ${purlObj.type}`);
+        console.error("Currently only Maven PURLs are supported");
+        process.exit(1);
+      }
+
+      const metadataPath = await purlBomGenerator.generatePurlMetadata(purlObj);
+      if (!metadataPath) {
+        console.error(`Failed to process the PURL: ${options.inspectPurl}`);
+        process.exit(1);
+      }
+  
+      filePath = dirname(metadataPath);
+      thoughtLog(`Using metadata from: ${filePath}`);
+    } catch (err) {
+      console.error(`Error processing PURL: ${err.message}`);
+      if (DEBUG_MODE) {
+        console.error(err.stack);
+      }
+      process.exit(1);
+    }
+  }
+
   thoughtLog("Getting ready to generate the BOM ⚡️.");
   let bomNSData = (await createBom(filePath, options)) || {};
   if (bomNSData?.bomJson) {

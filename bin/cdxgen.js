@@ -833,12 +833,6 @@ const checkPermissions = (filePath, options) => {
         process.exit(1);
       }
 
-      if (purlObj.type !== 'maven') {
-        console.error(`Unsupported PURL type: ${purlObj.type}`);
-        console.error("Currently only Maven PURLs are supported");
-        process.exit(1);
-      }
-
       const metadataPath = await purlBomGenerator.generatePurlMetadata(purlObj);
       if (!metadataPath) {
         console.error(`Failed to process the PURL: ${options.inspectPurl}`);

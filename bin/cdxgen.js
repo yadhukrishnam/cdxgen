@@ -826,9 +826,11 @@ const checkPermissions = (filePath, options) => {
         process.exit(1);
       }
 
-      if (!purlObj.type || !purlObj.namespace || !purlObj.name || !purlObj.version) {
+      // namespace is optional in the purl spec (e.g. unscoped npm packages, PyPI,
+      // RubyGems have none); only type, name and version are ever required.
+      if (!purlObj.type || !purlObj.name || !purlObj.version) {
         console.error(`Incomplete PURL provided: ${options.inspectPurl}`);
-        console.error("PURL must include type, namespace, name, and version");
+        console.error("PURL must include type, name, and version");
         console.error("Example: 'pkg:maven/org.apache.logging.log4j/log4j-core@2.14.1'");
         process.exit(1);
       }
